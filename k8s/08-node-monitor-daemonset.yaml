@@ -1,0 +1,32 @@
+# DaemonSet: app/web/db ke replicas se iska koi relation nahi. Ye har
+# NODE (machine) par exactly 1 monitoring pod chalata hai, chahe app ke
+# kitne bhi replicas ho ya kitne bhi nodes ho - automatic.
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:latest
+        ports:
+        - containerPort: 9100
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi

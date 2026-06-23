@@ -1,0 +1,71 @@
+# STATEFUL component: MySQL ko apna data yaad rakhna hai.
+# Service ka naam EXACTLY "vprodb" hai kyunki application.properties mein
+# jdbc.url=jdbc:mysql://vprodb:3306/... hardcoded hai. Kubernetes mein
+# Service ka naam hi cluster ke andar DNS hostname ban jaata hai.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: vprodb
+  namespace: vprofile
+spec:
+  clusterIP: None        # Headless service - StatefulSet ke liye zaroori
+  selector:
+    app: vprodb
+  ports:
+    - port: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vprodb
+  namespace: vprofile
+spec:
+  serviceName: vprodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vprodb
+  template:
+    metadata:
+      labels:
+        app: vprodb
+    spec:
+      containers:
+      - name: vprodb
+        image: <DOCKERHUB_USERNAME>/vprofile-db:v1
+        # MYSQL_ROOT_PASSWORD aur MYSQL_DATABASE custom image ke Dockerfile
+        # mein already ENV ke through baked hain - dobara pass karne ki
+        # zaroorat nahi (conflict se bachne ke liye).
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: vprodb-data
+          mountPath: /var/lib/mysql
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "mysqladmin ping -uroot -p$MYSQL_ROOT_PASSWORD"]
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["sh", "-c", "mysqladmin ping -uroot -p$MYSQL_ROOT_PASSWORD"]
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+  volumeClaimTemplates:        # Har replica ka apna alag PVC - StatefulSet ki pehchaan
+  - metadata:
+      name: vprodb-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: gp2
+      resources:
+        requests:
+          storage: 5Gi

@@ -1,0 +1,50 @@
+# HPA (Horizontal Pod Autoscaler): traffic badhne par Kubernetes khud
+# replicas badha dega (max 5 tak), traffic kam hone par wapas ghata dega
+# (min 2 tak). Sirf Deployment/StatefulSet par lagta hai - DaemonSet par
+# nahi (kyunki DaemonSet ka replica count "nodes ki ginti" se already fix hai).
+#
+# IMPORTANT: HPA kaam karne ke liye cluster mein "metrics-server" installed
+# hona chahiye. kops cluster mein ye by-default nahi hota, install karo:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# Agar kops/self-signed certs ki wajah se metrics-server CrashLoop kare,
+# uska deployment edit karke args mein --kubelet-insecure-tls add karo.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vproapp-hpa
+  namespace: vprofile
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vproapp
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60     # average CPU 60% se zyada hua to scale up
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vproweb-hpa
+  namespace: vprofile
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vproweb
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60

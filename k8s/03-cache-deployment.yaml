@@ -1,0 +1,47 @@
+# STATELESS-ish component: Memcached ek cache hai. Agar pod restart ho jaye
+# aur cache khali ho jaye, app crash nahi hoga - bas thoda slow ho jayega
+# jab tak cache phir se warm ho. Isliye StatefulSet ki zaroorat nahi,
+# simple Deployment kaafi hai.
+#
+# Service ka naam "vprocache01" hai - exactly application.properties ke
+# memcached.active.host se match karne ke liye.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vprocache01
+  namespace: vprofile
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vprocache01
+  template:
+    metadata:
+      labels:
+        app: vprocache01
+    spec:
+      containers:
+      - name: memcached
+        image: memcached:1.6-alpine     # official image, custom build ki zaroorat nahi
+        ports:
+        - containerPort: 11211
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vprocache01
+  namespace: vprofile
+spec:
+  selector:
+    app: vprocache01
+  ports:
+    - port: 11211
+      targetPort: 11211

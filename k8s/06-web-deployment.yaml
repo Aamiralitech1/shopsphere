@@ -1,0 +1,48 @@
+# STATELESS component: Nginx sirf reverse proxy hai (vproapp:8080 ko forward
+# karta hai), khud koi data store nahi karta. Deployment + LoadBalancer Service
+# (external traffic yahin se aata hai, jaise pehle wale project mein frontend tha).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vproweb
+  namespace: vprofile
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vproweb
+  template:
+    metadata:
+      labels:
+        app: vproweb
+    spec:
+      containers:
+      - name: vproweb
+        image: <DOCKERHUB_USERNAME>/vprofile-web:v1
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vproweb
+  namespace: vprofile
+spec:
+  selector:
+    app: vproweb
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer

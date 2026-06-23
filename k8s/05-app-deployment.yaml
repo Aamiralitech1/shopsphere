@@ -1,0 +1,94 @@
+# STATELESS component: Tomcat app koi local data store nahi karta - har
+# request DB/cache/mq se data leke process hota hai. Pod crash ho aur naya
+# pod aaye, koi farak nahi padta. Isliye Deployment use ho raha hai.
+#
+# Service ka naam "vproapp" hai - kyunki nginx (web tier) ka upstream config
+# mein "server vproapp:8080" likha hai (Docker-files/web/nginvproapp.conf).
+#
+# initContainers: Phase 1 mein humne dekha tha ki app DB se pehle start ho
+# jaata hai aur DB abhi ready nahi hota (race condition). initContainer
+# se hum app ko tab tak rukwayenge jab tak DB/cache/MQ port khul na jaye.
+#
+# Sidecar: application.properties mein elasticsearch.host=localhost
+# hardcoded hai - matlab ES ko SAME POD mein chalna chahiye (sidecar pattern),
+# kyunki sirf same pod ke containers ek dusre ko "localhost" bol sakte hain.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vproapp
+  namespace: vprofile
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vproapp
+  template:
+    metadata:
+      labels:
+        app: vproapp
+    spec:
+      initContainers:
+      - name: wait-for-db
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z vprodb 3306; do echo waiting for vprodb; sleep 5; done']
+      - name: wait-for-cache
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z vprocache01 11211; do echo waiting for vprocache01; sleep 5; done']
+      - name: wait-for-mq
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z vpromq01 5672; do echo waiting for vpromq01; sleep 5; done']
+      containers:
+      - name: vproapp
+        image: <DOCKERHUB_USERNAME>/vprofile-app:v1
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /login
+            port: 8080
+          initialDelaySeconds: 40
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /login
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 250m        # HPA ko CPU% calculate karne ke liye requests zaroori hain
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+      # Sidecar container - same pod, isliye "localhost" se reachable
+      - name: elasticsearch
+        image: elasticsearch:7.17.9
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: ES_JAVA_OPTS
+          value: "-Xms256m -Xmx256m"
+        ports:
+        - containerPort: 9200
+        - containerPort: 9300
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vproapp
+  namespace: vprofile
+spec:
+  selector:
+    app: vproapp
+  ports:
+    - port: 8080
+      targetPort: 8080

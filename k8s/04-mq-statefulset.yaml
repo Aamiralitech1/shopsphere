@@ -1,0 +1,73 @@
+# STATEFUL component: RabbitMQ ke queue messages persist karna zaroori hai -
+# agar pod restart ho aur undelivered messages gayab ho jayen to data loss
+# real business impact hoga (jaise order processing queue). Isliye PVC chahiye.
+#
+# Service ka naam "vpromq01" hai - application.properties ke
+# rabbitmq.address se match karne ke liye.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: vpromq01
+  namespace: vprofile
+spec:
+  clusterIP: None
+  selector:
+    app: vpromq01
+  ports:
+    - port: 5672
+      name: amqp
+    - port: 15672
+      name: management
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vpromq01
+  namespace: vprofile
+spec:
+  serviceName: vpromq01
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vpromq01
+  template:
+    metadata:
+      labels:
+        app: vpromq01
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.12-management-alpine
+        envFrom:
+        - secretRef:
+            name: vpromq-secret
+        ports:
+        - containerPort: 5672
+          name: amqp
+        - containerPort: 15672
+          name: management
+        volumeMounts:
+        - name: vpromq-data
+          mountPath: /var/lib/rabbitmq
+        readinessProbe:
+          exec:
+            command: ["rabbitmq-diagnostics", "-q", "ping"]
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+  volumeClaimTemplates:
+  - metadata:
+      name: vpromq-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: gp2
+      resources:
+        requests:
+          storage: 2Gi
